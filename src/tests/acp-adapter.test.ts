@@ -336,106 +336,6 @@ new AgentSideConnection((connection) => new FakeAgent(connection), stream);
         output: "done",
         isError: false,
       });
-<<<<<<< HEAD
-      const persisted = await getSessionLogsByTaskId(task.id);
-      expect(persisted).toHaveLength(rawLogs.length);
-      expect(persisted.map((entry) => entry.content)).toEqual(rawLogs);
-      expect(persisted.every((entry) => entry.cli === "acp")).toBe(true);
-      const responseLog = persisted
-        .map((entry) => JSON.parse(entry.content))
-        .find((entry) => entry.name === "acp_prompt_response");
-      expect(responseLog).toEqual({
-        type: "custom",
-        name: "acp_prompt_response",
-        data: {
-          sessionId: session.sessionId,
-          stopReason: "end_turn",
-          usage: usage ?? null,
-          _meta: { debug: "[REDACTED:github_token]", note: "response metadata" },
-        },
-      });
-      expect(result.cost?.totalCostUsd).toBe(0);
-      expect(result.cost?.inputTokens).toBe(usage?.inputTokens);
-      expect(result.cost?.outputTokens).toBe(usage?.outputTokens);
-      expect(result.cost?.cacheReadTokens).toBe(usage?.cachedReadTokens ?? undefined);
-      expect(result.cost?.cacheWriteTokens).toBe(usage?.cachedWriteTokens ?? undefined);
-      // Match saveCostData's JSON transport: undefined counters disappear on the wire.
-      // The existing API deliberately coalesces them to zero; only raw logs retain absence.
-      const agent = await createAgent({ name: "ACP cost test", isLead: false, status: "idle" });
-      const server = createServer(async (req, res) => {
-        const handled = await handleSessionData(
-          req,
-          res,
-          getPathSegments(req.url ?? ""),
-          parseQueryParams(req.url ?? ""),
-          agent.id,
-        );
-        if (!handled) {
-          res.writeHead(404);
-          res.end();
-        }
-      });
-      try {
-        const port = await listenOnFreePort(server);
-        const endpoint = `http://127.0.0.1:${port}/api/session-costs`;
-        const body = JSON.stringify({ ...result.cost, agentId: agent.id, taskId: task.id });
-        if (!usage) {
-          for (const counter of [
-            "inputTokens",
-            "outputTokens",
-            "cacheReadTokens",
-            "cacheWriteTokens",
-          ]) {
-            expect(JSON.parse(body)).not.toHaveProperty(counter);
-          }
-        }
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-        });
-        expect(response.status).toBe(201);
-        const { cost } = await response.json();
-        expect(cost).toMatchObject({
-          inputTokens: usage?.inputTokens ?? 0,
-          outputTokens: usage?.outputTokens ?? 0,
-          cacheReadTokens: usage?.cachedReadTokens ?? 0,
-          cacheWriteTokens: usage?.cachedWriteTokens ?? 0,
-          costSource: "unpriced",
-        });
-        const readback = await fetch(`${endpoint}?taskId=${task.id}`);
-        expect(readback.status).toBe(200);
-        const { costs } = await readback.json();
-        expect(costs).toHaveLength(1);
-        expect(costs[0]).toMatchObject({
-          id: cost.id,
-          inputTokens: cost.inputTokens,
-          outputTokens: cost.outputTokens,
-          cacheReadTokens: cost.cacheReadTokens,
-          cacheWriteTokens: cost.cacheWriteTokens,
-          costSource: cost.costSource,
-        });
-      } finally {
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-      }
-      const persistedJson = persisted.map((entry) => entry.content).join("\n");
-      expect(persistedJson).not.toContain("opaque-response-credential");
-      const credentialHeaderNames = [
-        "authorization",
-        "proxy-authorization",
-        "cookie",
-        "set-cookie",
-        "www-authenticate",
-        "proxy-authenticate",
-        "x-api-key",
-        "api-key",
-        "x-auth-token",
-        "x-access-token",
-        "x-session-token",
-      ];
-      for (const headerName of credentialHeaderNames) {
-        expect(persistedJson.toLowerCase()).not.toContain(headerName);
-=======
       expect(events.some((event) => event.type === "session_init")).toBe(true);
       expect(events.find((event) => event.type === "session_init")).toMatchObject({
         providerMeta: {
@@ -542,7 +442,6 @@ new AgentSideConnection((connection) => new FakeAgent(connection), stream);
         ).toBe(true);
       } finally {
         closeDb();
->>>>>>> bba90f03 (fix(acp): fail closed on token mint, revoke on setup failure, enforce /mcp identity)
       }
     } finally {
       await new Promise<void>((resolve) => tokenStub.close(() => resolve()));
@@ -782,29 +681,6 @@ new AgentSideConnection((connection) => new FakeAgent(connection), stream);
     let revokeCalled = false;
     let mintBody: Record<string, unknown> = {};
 
-<<<<<<< HEAD
-    const swarmServer = createServer(
-      async (req: IncomingMessage, res: ServerResponse) => {
-        if (req.method === "POST" && req.url === "/api/sessions/tokens") {
-          mintCalled = true;
-          const chunks: Buffer[] = [];
-          for await (const chunk of req) chunks.push(chunk as Buffer);
-          try {
-            mintBody = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>;
-          } catch { /* ignore */ }
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ tokenId: FAKE_TOKEN_ID, plaintext: FAKE_TOKEN }));
-        } else if (
-          req.method === "DELETE" &&
-          req.url === `/api/sessions/tokens/${FAKE_TOKEN_ID}`
-        ) {
-          revokeCalled = true;
-          res.writeHead(204);
-          res.end();
-        } else {
-          res.writeHead(404);
-          res.end();
-=======
     const swarmServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
       if (req.method === "POST" && req.url === "/api/sessions/tokens") {
         mintCalled = true;
@@ -814,7 +690,6 @@ new AgentSideConnection((connection) => new FakeAgent(connection), stream);
           mintBody = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>;
         } catch {
           /* ignore */
->>>>>>> bba90f03 (fix(acp): fail closed on token mint, revoke on setup failure, enforce /mcp identity)
         }
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ tokenId: FAKE_TOKEN_ID, plaintext: FAKE_TOKEN }));

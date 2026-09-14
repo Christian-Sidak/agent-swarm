@@ -1,4 +1,5 @@
 import { ensure } from "@desplega.ai/business-use";
+import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import { resolveTaskAuditUserId } from "@/be/audit-user";
@@ -143,9 +144,11 @@ export const registerDeferTaskTool = (server: McpServer) => {
       try {
         const committed = await getDbClient().transaction(async () => {
           const schedule = await createScheduledTask({
-            // Unique name (`getScheduledTaskByName` is a unique lookup). The ms
-            // timestamp keeps repeated deferrals of the same task from colliding.
-            name: `deferred-${taskId.slice(0, 8)}-${Date.now()}`,
+            // Unique name (`getScheduledTaskByName` is a unique lookup). The UUID
+            // suffix guarantees uniqueness even for concurrent deferrals of the
+            // same task within the same millisecond (which would otherwise hit the
+            // UNIQUE constraint before `completeTask` can serialize the race).
+            name: `deferred-${taskId.slice(0, 8)}-${randomUUID().slice(0, 8)}`,
             description: note,
             taskTemplate,
             targetType: "agent-task",

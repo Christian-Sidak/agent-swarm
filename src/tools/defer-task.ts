@@ -145,10 +145,8 @@ export const registerDeferTaskTool = (server: McpServer) => {
         const committed = await getDbClient().transaction(async () => {
           const schedule = await createScheduledTask({
             // Unique name (`getScheduledTaskByName` is a unique lookup). The UUID
-            // suffix guarantees uniqueness even for concurrent deferrals of the
-            // same task within the same millisecond (which would otherwise hit the
-            // UNIQUE constraint before `completeTask` can serialize the race).
-            name: `deferred-${taskId.slice(0, 8)}-${randomUUID().slice(0, 8)}`,
+            // prevents concurrent deferrals of the same task from colliding.
+            name: `deferred-${taskId.slice(0, 8)}-${Date.now()}-${crypto.randomUUID()}`,
             description: note,
             taskTemplate,
             targetType: "agent-task",

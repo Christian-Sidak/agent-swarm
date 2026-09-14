@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Usage } from "@agentclientprotocol/sdk";
@@ -395,6 +390,65 @@ new AgentSideConnection((connection) => new FakeAgent(connection), stream);
         expect(persisted).toHaveLength(rawLogs.length);
         expect(persisted.map((entry) => entry.content)).toEqual(rawLogs);
         expect(persisted.every((entry) => entry.cli === "acp")).toBe(true);
+        // Match saveCostData's JSON transport: undefined counters disappear on the wire.
+        // The existing API deliberately coalesces them to zero; only raw logs retain absence.
+        const agent = await createAgent({ name: "ACP cost test", isLead: false, status: "idle" });
+        const server = createServer(async (req, res) => {
+          const handled = await handleSessionData(
+            req,
+            res,
+            getPathSegments(req.url ?? ""),
+            parseQueryParams(req.url ?? ""),
+            agent.id,
+          );
+          if (!handled) {
+            res.writeHead(404);
+            res.end();
+          }
+        });
+        try {
+          const port = await listenOnFreePort(server);
+          const endpoint = `http://127.0.0.1:${port}/api/session-costs`;
+          const body = JSON.stringify({ ...result.cost, agentId: agent.id, taskId: task.id });
+          if (!usage) {
+            for (const counter of [
+              "inputTokens",
+              "outputTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+            ]) {
+              expect(JSON.parse(body)).not.toHaveProperty(counter);
+            }
+          }
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+          });
+          expect(response.status).toBe(201);
+          const { cost } = await response.json();
+          expect(cost).toMatchObject({
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+            cacheReadTokens: usage?.cachedReadTokens ?? 0,
+            cacheWriteTokens: usage?.cachedWriteTokens ?? 0,
+            costSource: "unpriced",
+          });
+          const readback = await fetch(`${endpoint}?taskId=${task.id}`);
+          expect(readback.status).toBe(200);
+          const { costs } = await readback.json();
+          expect(costs).toHaveLength(1);
+          expect(costs[0]).toMatchObject({
+            id: cost.id,
+            inputTokens: cost.inputTokens,
+            outputTokens: cost.outputTokens,
+            cacheReadTokens: cost.cacheReadTokens,
+            cacheWriteTokens: cost.cacheWriteTokens,
+            costSource: cost.costSource,
+          });
+        } finally {
+          await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
         const persistedJson = persisted.map((entry) => entry.content).join("\n");
         const credentialHeaderNames = [
           "authorization",
